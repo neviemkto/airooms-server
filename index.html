@@ -372,7 +372,7 @@ const mp = {
 function initSocket() {
     // Change this to your server URL when deploying
     const serverUrl = window.location.origin;
-    mp.socket = io(serverUrl);
+    mp.socket = io('https://airooms-server.onrender.com');
 
     mp.socket.on('connect', () => {
         mp.connected = true;

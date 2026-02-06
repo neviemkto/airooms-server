@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI ROOMS - MULTIPLAYER ESCAPE</title>
+    <style>
+        :root {
+            --primary: #ff3333;
+            --bg: #030305;
+            --ui-font: 'Courier New', Courier, monospace;
+        }
+
+        body { margin: 0; overflow: hidden; background: var(--bg); font-family: var(--ui-font); color: #fff; }
+        canvas { display: block; cursor: none; width: 100vw; height: 100vh; }
+        
+        #ui {
+            position: absolute;
+            top: 30px; left: 30px;
+            pointer-events: none; z-index: 100;
+            padding: 15px; border-left: 2px solid var(--primary);
+            background: linear-gradient(90deg, rgba(255,0,0,0.1) 0%, transparent 100%);
+            font-size: 14px; text-transform: uppercase; letter-spacing: 2px;
+        }
+        
+        #vhs-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 80;
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px, transparent 1px, transparent 2px);
+            opacity: 0.3;
+        }
+
+        #message {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; color: var(--primary); font-size: 24px;
+            display: none; flex-direction: column; justify-content: center;
+            align-items: center; text-align: center; z-index: 1000;
+        }
+
+        #interaction-prompt {
+            position: absolute;
+            bottom: 20%; left: 50%; transform: translateX(-50%);
+            color: #fff; font-size: 14px; letter-spacing: 4px;
+            display: none; z-index: 150; pointer-events: none;
+            padding: 10px 30px; border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(5px);
+        }
+
+        #menu {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 500;
+        }
+
+        .glitch-container { position: relative; margin-bottom: 50px; }
+        .glitch-text { 
+            font-size: clamp(40px, 8vw, 100px); 
+            font-weight: 900; 
+            letter-spacing: 15px; 
+            position: relative;
+            text-shadow: 0.05em 0 0 rgba(255,0,0,.75), -0.025em -0.05em 0 rgba(0,255,0,.75), 0.025em 0.05em 0 rgba(0,255,0,.75);
+            animation: glitch 1s infinite;
+        }
+
+        @keyframes glitch {
+            0% { text-shadow: 0.05em 0 0 rgba(255,0,0,.75), -0.05em -0.025em 0 rgba(0,255,0,.75), -0.025em -0.05em 0 rgba(0,0,255,.75); }
+            15% { text-shadow: -0.05em -0.025em 0 rgba(255,0,0,.75), 0.025em 0.025em 0 rgba(0,255,0,.75), -0.05em -0.05em 0 rgba(0,0,255,.75); }
+            50% { text-shadow: 0.025em 0.05em 0 rgba(255,0,0,.75), 0.05em 0 0 rgba(0,255,0,.75), 0 -0.05em 0 rgba(0,0,255,.75); }
+            100% { text-shadow: -0.025em 0 0 rgba(255,0,0,.75), -0.025em -0.025em 0 rgba(0,255,0,.75), -0.025em -0.05em 0 rgba(0,0,255,.75); }
+        }
+
+        .btn-group { display: flex; flex-direction: column; gap: 15px; width: 320px; }
+        button {
+            background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.1);
+            padding: 20px; font-size: 13px; cursor: pointer;
+            transition: 0.2s all; font-family: inherit; letter-spacing: 4px;
+            text-align: left; position: relative; overflow: hidden;
+            background: rgba(255,255,255,0.02);
+        }
+        button:hover:not(:disabled) {
+            background: #fff; color: #000; border-color: #fff; transform: translateX(10px);
+        }
+        button:disabled { opacity: 0.1; cursor: not-allowed; }
+        button .subtext { display: block; font-size: 8px; opacity: 0.4; letter-spacing: 1px; margin-top: 5px; }
+
+        #level-notifier {
+            position: absolute;
+            top: 15%; left: 0; width: 100%; text-align: center;
+            opacity: 0; transition: 1.5s opacity; z-index: 200; pointer-events: none;
+        }
+        #lvl-title { font-size: 40px; font-weight: 900; letter-spacing: 10px; display: block; }
+        #level-desc { font-size: 12px; color: var(--primary); letter-spacing: 5px; margin-top: 10px; }
+
+        .scanline {
+            width: 100%; height: 100px; z-index: 85; position: absolute;
+            background: linear-gradient(0deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
+            animation: scanline 8s linear infinite; pointer-events: none;
+        }
+        @keyframes scanline { from { top: -100px; } to { top: 100%; } }
+
+        /* Multiplayer UI */
+        #lobby-container {
+            display: none;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            border: 2px solid var(--primary);
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            z-index: 600;
+        }
+
+        #lobby-container h2 {
+            margin: 0 0 20px 0;
+            font-size: 24px;
+            letter-spacing: 4px;
+            text-align: center;
+        }
+
+        input {
+            width: 100%;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+            letter-spacing: 2px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .lobby-btn {
+            width: 100%;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        #room-code-display {
+            text-align: center;
+            font-size: 32px;
+            letter-spacing: 8px;
+            color: var(--primary);
+            margin: 20px 0;
+            font-weight: 900;
+        }
+
+        #player-list {
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .player-item {
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .player-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+        }
+
+        #chat-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 350px;
+            z-index: 150;
+        }
+
+        #chat-messages {
+            background: rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            font-size: 11px;
+            margin-bottom: 5px;
+            display: none;
+        }
+
+        .chat-msg {
+            margin-bottom: 5px;
+            word-wrap: break-word;
+        }
+
+        .chat-msg .player-name {
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        #chat-input-container {
+            display: none;
+        }
+
+        #chat-input {
+            margin: 0;
+        }
+
+        #player-indicators {
+            position: absolute;
+            top: 100px;
+            right: 20px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .player-indicator {
+            background: rgba(0,0,0,0.7);
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 8px 12px;
+            margin-bottom: 5px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .indicator-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .name-tag {
+            position: absolute;
+            color: #fff;
+            font-size: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 3px 8px;
+            border-radius: 3px;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        #connection-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            background: rgba(0,0,0,0.8);
+            border: 1px solid;
+            font-size: 10px;
+            letter-spacing: 1px;
+            z-index: 100;
+        }
+
+        .status-connected { border-color: #0f0; color: #0f0; }
+        .status-disconnected { border-color: #f00; color: #f00; }
+    </style>
+</head>
+<body>
+    <div id="vhs-overlay"></div>
+    <div class="scanline"></div>
+    
+    <div id="connection-status" class="status-disconnected">DISCONNECTED</div>
+    
+    <div id="ui">
+        [REC] 00:00:00<br>
+        LOC: ARCHIVE.<span id="lvl-name">0</span><br>
+        <div id="stats" style="margin-top:20px; color:rgba(255,255,255,0.5);">INIT...</div>
+    </div>
+
+    <div id="level-notifier">
+        <span id="lvl-title">LEVEL 0</span>
+        <span id="level-desc">ANOMALY DETECTED</span>
+    </div>
+
+    <div id="interaction-prompt">ACCESS TERMINAL</div>
+    <div id="message"></div>
+    
+    <div id="menu">
+        <div class="glitch-container">
+            <h1 class="glitch-text">AI ROOMS</h1>
+            <div style="text-align: center; font-size: 14px; color: var(--primary); letter-spacing: 3px;">MULTIPLAYER</div>
+        </div>
+        
+        <div class="btn-group">
+            <button onmouseenter="playUiHover()" onclick="showLobbyCreate()">
+                CREATE ROOM
+                <span class="subtext">HOST A NEW SESSION</span>
+            </button>
+            <button onmouseenter="playUiHover()" onclick="showLobbyJoin()">
+                JOIN ROOM
+                <span class="subtext">ENTER EXISTING SESSION</span>
+            </button>
+        </div>
+        
+        <div style="margin-top: 60px; font-size: 9px; color: #444; text-transform: uppercase; letter-spacing: 2px; text-align: center; line-height: 2;">
+            [WASD] NAVIGATE // [SHIFT] OVERCLOCK // [SPACE] ILLUMINATE // [E] INTERACT // [T] CHAT<br>
+            <span style="color: #666">MULTIPLAYER VERSION 1.0 // SOCKET.IO PROTOCOL</span>
+        </div>
+    </div>
+
+    <!-- Lobby UI -->
+    <div id="lobby-container">
+        <div id="lobby-create-screen">
+            <h2>CREATE ROOM</h2>
+            <input type="text" id="create-name-input" placeholder="ENTER YOUR NAME" maxlength="20">
+            <button class="lobby-btn" onclick="createRoom()">GENERATE ROOM CODE</button>
+            <button class="lobby-btn" onclick="closeLobby()">CANCEL</button>
+        </div>
+
+        <div id="lobby-join-screen" style="display: none;">
+            <h2>JOIN ROOM</h2>
+            <input type="text" id="join-name-input" placeholder="ENTER YOUR NAME" maxlength="20">
+            <input type="text" id="join-code-input" placeholder="ENTER ROOM CODE" maxlength="6" style="text-transform: uppercase;">
+            <button class="lobby-btn" onclick="joinRoom()">JOIN SESSION</button>
+            <button class="lobby-btn" onclick="closeLobby()">CANCEL</button>
+        </div>
+
+        <div id="lobby-waiting-screen" style="display: none;">
+            <h2>WAITING ROOM</h2>
+            <div id="room-code-display"></div>
+            <div style="text-align: center; font-size: 11px; margin-bottom: 20px; opacity: 0.6;">SHARE THIS CODE WITH OTHERS</div>
+            <div id="player-list"></div>
+            <button class="lobby-btn" onclick="startMultiplayerGame()" id="start-game-btn">START MISSION</button>
+            <button class="lobby-btn" onclick="leaveRoom()">LEAVE ROOM</button>
+        </div>
+    </div>
+
+    <!-- Chat UI -->
+    <div id="chat-container">
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+            <input type="text" id="chat-input" placeholder="Press T to chat..." maxlength="100">
+        </div>
+    </div>
+
+    <!-- Player Indicators -->
+    <div id="player-indicators"></div>
+
+    <canvas id="c"></canvas>
+
+    <!-- Socket.IO -->
+    <script src="/socket.io/socket.io.js"></script>
+
+<script>
+'use strict';
+
+// Multiplayer State
+const mp = {
+    socket: null,
+    connected: false,
+    roomCode: null,
+    playerName: null,
+    playerId: null,
+    otherPlayers: new Map(),
+    playerColor: [1, 1, 1],
+    isHost: false,
+    chatOpen: false
+};
+
+// Initialize Socket.IO
+function initSocket() {
+    // Change this to your server URL when deploying
+    const serverUrl = window.location.origin;
+    mp.socket = io(serverUrl);
+
+    mp.socket.on('connect', () => {
+        mp.connected = true;
+        mp.playerId = mp.socket.id;
+        updateConnectionStatus(true);
+        console.log('Connected to server');
+    });
+
+    mp.socket.on('disconnect', () => {
+        mp.connected = false;
+        updateConnectionStatus(false);
+        console.log('Disconnected from server');
+    });
+
+    mp.socket.on('roomCreated', (data) => {
+        mp.roomCode = data.roomCode;
+        mp.playerColor = data.player.color;
+        mp.isHost = true;
+        document.getElementById('room-code-display').textContent = data.roomCode;
+        document.getElementById('lobby-create-screen').style.display = 'none';
+        document.getElementById('lobby-waiting-screen').style.display = 'block';
+        updatePlayerList(data.room.players);
+    });
+
+    mp.socket.on('roomJoined', (data) => {
+        mp.roomCode = data.roomCode;
+        mp.playerColor = data.player.color;
+        document.getElementById('lobby-join-screen').style.display = 'none';
+        document.getElementById('lobby-waiting-screen').style.display = 'block';
+        updatePlayerList(data.room.players);
+        
+        // Load existing game state
+        if (data.room.completedCodes) {
+            state.codes = data.room.completedCodes;
+        }
+    });
+
+    mp.socket.on('playerJoined', (player) => {
+        mp.otherPlayers.set(player.id, player);
+        addChatMessage('SYSTEM', `${player.name} joined the session`);
+        updatePlayerIndicators();
+    });
+
+    mp.socket.on('playerLeft', (data) => {
+        mp.otherPlayers.delete(data.id);
+        addChatMessage('SYSTEM', `${data.name} left the session`);
+        updatePlayerIndicators();
+    });
+
+    mp.socket.on('playerMoved', (data) => {
+        const player = mp.otherPlayers.get(data.id);
+        if (player) {
+            player.position = data.position;
+            player.yaw = data.yaw;
+            player.pitch = data.pitch;
+            player.light = data.light;
+        }
+    });
+
+    mp.socket.on('codeCollected', (data) => {
+        state.codes.push(data.terminalIndex);
+        addChatMessage('SYSTEM', `${data.playerName} activated terminal ${data.terminalIndex + 1}. Codes: ${data.totalCodes}/3`);
+        playSfx(1100, 'sine', 0.5, 0.1, 1400);
+    });
+
+    mp.socket.on('levelComplete', (data) => {
+        state.level = data.newLevel;
+        state.codes = [];
+        addChatMessage('SYSTEM', `Level ${data.newLevel} unlocked! Teleporting...`);
+        playSfx(1300, 'sawtooth', 0.7, 0.1, 700);
+        setTimeout(() => {
+            loadLevel(data.newLevel);
+        }, 1000);
+    });
+
+    mp.socket.on('gameComplete', () => {
+        state.win = true;
+        document.getElementById('message').style.display = 'flex';
+        document.getElementById('message').style.color = '#0f0';
+        document.getElementById('message').innerHTML = '<h1 class="glitch-text">PURGE SUCCESSFUL</h1><p>MULTIPLAYER MISSION COMPLETE</p>';
+        playSfx(600, 'square', 1.2, 0.1, 80);
+        setTimeout(() => {
+            leaveRoom();
+            showMenu();
+        }, 5000);
+    });
+
+    mp.socket.on('playerDead', (data) => {
+        addChatMessage('SYSTEM', `${data.name} was terminated`);
+    });
+
+    mp.socket.on('chatMessage', (data) => {
+        if (data.playerId !== mp.playerId) {
+            addChatMessage(data.playerName, data.message);
+        }
+    });
+
+    mp.socket.on('error', (data) => {
+        alert(data.message);
+        closeLobby();
+    });
+}
+
+function updateConnectionStatus(connected) {
+    const status = document.getElementById('connection-status');
+    if (connected) {
+        status.textContent = 'CONNECTED';
+        status.className = 'status-connected';
+    } else {
+        status.textContent = 'DISCONNECTED';
+        status.className = 'status-disconnected';
+    }
+}
+
+function showLobbyCreate() {
+    playUiClick();
+    document.getElementById('lobby-container').style.display = 'block';
+    document.getElementById('lobby-create-screen').style.display = 'block';
+    document.getElementById('lobby-join-screen').style.display = 'none';
+    document.getElementById('create-name-input').focus();
+}
+
+function showLobbyJoin() {
+    playUiClick();
+    document.getElementById('lobby-container').style.display = 'block';
+    document.getElementById('lobby-create-screen').style.display = 'none';
+    document.getElementById('lobby-join-screen').style.display = 'block';
+    document.getElementById('join-name-input').focus();
+}
+
+function closeLobby() {
+    playUiClick();
+    document.getElementById('lobby-container').style.display = 'none';
+}
+
+function createRoom() {
+    const name = document.getElementById('create-name-input').value.trim() || 'Player';
+    mp.playerName = name;
+    mp.socket.emit('createRoom', name);
+    playUiClick();
+}
+
+function joinRoom() {
+    const name = document.getElementById('join-name-input').value.trim() || 'Player';
+    const code = document.getElementById('join-code-input').value.trim().toUpperCase();
+    
+    if (code.length !== 6) {
+        alert('Please enter a valid 6-character room code');
+        return;
+    }
+    
+    mp.playerName = name;
+    mp.socket.emit('joinRoom', { roomCode: code, name: name });
+    playUiClick();
+}
+
+function leaveRoom() {
+    if (mp.socket) {
+        mp.socket.disconnect();
+        mp.socket.connect();
+    }
+    mp.roomCode = null;
+    mp.otherPlayers.clear();
+    closeLobby();
+    showMenu();
+    playUiClick();
+}
+
+function updatePlayerList(players) {
+    const list = document.getElementById('player-list');
+    list.innerHTML = '<div style="font-size: 11px; margin-bottom: 10px; opacity: 0.6;">CONNECTED PLAYERS:</div>';
+    
+    players.forEach(player => {
+        if (player.id !== mp.playerId) {
+            mp.otherPlayers.set(player.id, player);
+        }
+        
+        const item = document.createElement('div');
+        item.className = 'player-item';
+        
+        const colorDiv = document.createElement('div');
+        colorDiv.className = 'player-color';
+        colorDiv.style.background = `rgb(${player.color[0]*255}, ${player.color[1]*255}, ${player.color[2]*255})`;
+        
+        const nameDiv = document.createElement('div');
+        nameDiv.textContent = player.name + (player.id === mp.playerId ? ' (YOU)' : '');
+        
+        item.appendChild(colorDiv);
+        item.appendChild(nameDiv);
+        list.appendChild(item);
+    });
+    
+    updatePlayerIndicators();
+}
+
+function updatePlayerIndicators() {
+    const container = document.getElementById('player-indicators');
+    container.innerHTML = '';
+    
+    mp.otherPlayers.forEach(player => {
+        const indicator = document.createElement('div');
+        indicator.className = 'player-indicator';
+        
+        const colorDiv = document.createElement('div');
+        colorDiv.className = 'indicator-color';
+        colorDiv.style.background = `rgb(${player.color[0]*255}, ${player.color[1]*255}, ${player.color[2]*255})`;
+        
+        const nameDiv = document.createElement('div');
+        nameDiv.textContent = player.name;
+        
+        indicator.appendChild(colorDiv);
+        indicator.appendChild(nameDiv);
+        container.appendChild(indicator);
+    });
+}
+
+function addChatMessage(sender, message) {
+    const chatMessages = document.getElementById('chat-messages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-msg';
+    
+    if (sender === 'SYSTEM') {
+        msgDiv.innerHTML = `<span style="color: var(--primary);">[${sender}]</span> ${message}`;
+    } else {
+        msgDiv.innerHTML = `<span class="player-name">${sender}:</span> ${message}`;
+    }
+    
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Show chat temporarily
+    chatMessages.style.display = 'block';
+    setTimeout(() => {
+        if (!mp.chatOpen) {
+            chatMessages.style.display = 'none';
+        }
+    }, 5000);
+}
+
+function toggleChat() {
+    mp.chatOpen = !mp.chatOpen;
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInputContainer = document.getElementById('chat-input-container');
+    const chatInput = document.getElementById('chat-input');
+    
+    if (mp.chatOpen) {
+        chatMessages.style.display = 'block';
+        chatInputContainer.style.display = 'block';
+        chatInput.focus();
+    } else {
+        chatInputContainer.style.display = 'none';
+        chatInput.value = '';
+    }
+}
+
+function sendChatMessage() {
+    const chatInput = document.getElementById('chat-input');
+    const message = chatInput.value.trim();
+    
+    if (message && mp.socket && mp.connected) {
+        mp.socket.emit('chatMessage', message);
+        addChatMessage(mp.playerName, message);
+        chatInput.value = '';
+    }
+    
+    toggleChat();
+}
+
+function startMultiplayerGame() {
+    playUiClick();
+    handleFirstClick();
+    document.getElementById('lobby-container').style.display = 'none';
+    document.getElementById('menu').style.display = 'none';
+    canvas.requestPointerLock();
+    state.gameStarted = true;
+    state.startTime = Date.now() / 1000;
+    loadLevel(0);
+    updateAudio();
+    requestAnimationFrame(render);
+    
+    // Show chat
+    document.getElementById('chat-messages').style.display = 'block';
+}
+
+// Send player updates to server
+function sendPlayerUpdate() {
+    if (mp.socket && mp.connected && mp.roomCode && state.gameStarted) {
+        mp.socket.emit('playerUpdate', {
+            position: state.pos,
+            yaw: state.yaw,
+            pitch: state.pitch,
+            light: state.light
+        });
+    }
+}
+
+// Original game code continues below...
+const CELL = 7;
+const MAP_SIZES = [22, 28, 35]; 
+const LEVEL_DATA = {
+    0: { wall: [0.6, 0.55, 0.45], floor: [0.2, 0.18, 0.15], ceil: [0.7, 0.7, 0.65], name: "THE LOBBY", desc: "ENTITY DETECTED. DO NOT MAKE EYE CONTACT.", stalkers: 1, blinkers: 0, observers: 0 },
+    1: { wall: [0.25, 0.45, 0.55], floor: [0.1, 0.2, 0.3], ceil: [0.8, 0.8, 0.9], name: "THE POOLROOMS", desc: "DON'T BLINK. IT MOVES WHEN UNSEEN.", stalkers: 0, blinkers: 1, observers: 0 },
+    2: { wall: [0.35, 0.15, 0.15], floor: [0.15, 0.05, 0.05], ceil: [0.3, 0.2, 0.2], name: "RUNOFF VAULT", desc: "IT SEES YOU. DO NOT STOP MOVING.", stalkers: 0, blinkers: 0, observers: 1 }
+};
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { alpha: false, antialias: false });
+let state, locs, audioCtx;
+
+const vs = `
+attribute vec3 aPos, aNorm, aCol;
+uniform mat4 uProj, uView, uModel;
+varying vec3 vPos, vNorm, vCol;
+void main() {
+    vec4 worldPos = uModel * vec4(aPos, 1.0);
+    vPos = worldPos.xyz;
+    vNorm = (uModel * vec4(aNorm, 0.0)).xyz;
+    vCol = aCol;
+    gl_Position = uProj * uView * worldPos;
+}`;
+
+const fs = `
+precision mediump float;
+varying vec3 vPos, vNorm, vCol;
+uniform vec3 uCamPos, uCamDir;
+uniform float uLightOn, uTime, uStaticInt, uFlicker;
+
+float rand(vec2 co){ return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453); }
+
+void main() {
+    vec3 lightPos = uCamPos + uCamDir * 3.0;
+    vec3 toLight = lightPos - vPos;
+    float dist = length(toLight);
+    toLight = normalize(toLight);
+    
+    vec3 N = normalize(vNorm);
+    float diff = max(dot(N, toLight), 0.0);
+    float att = uLightOn / (1.0 + dist*dist*0.04);
+    
+    vec3 ambient = vCol * (0.15 + uStaticInt*0.1);
+    vec3 lit = vCol * diff * att * uFlicker;
+    
+    vec3 color = ambient + lit;
+    
+    float noise = rand(gl_FragCoord.xy * uTime * 0.01) * uStaticInt * 0.4;
+    color += vec3(noise);
+    
+    float scanline = sin(gl_FragCoord.y * 1.5 + uTime * 2.0) * 0.03;
+    color += vec3(scanline);
+    
+    gl_FragColor = vec4(color, 1.0);
+}`;
+
+function compileShader(type, src) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, src);
+    gl.compileShader(shader);
+    return shader;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+locs = {
+    pos: gl.getAttribLocation(prog, 'aPos'),
+    norm: gl.getAttribLocation(prog, 'aNorm'),
+    color: gl.getAttribLocation(prog, 'aCol'),
+    proj: gl.getUniformLocation(prog, 'uProj'),
+    view: gl.getUniformLocation(prog, 'uView'),
+    model: gl.getUniformLocation(prog, 'uModel'),
+    camPos: gl.getUniformLocation(prog, 'uCamPos'),
+    camDir: gl.getUniformLocation(prog, 'uCamDir'),
+    lightOn: gl.getUniformLocation(prog, 'uLightOn'),
+    uTime: gl.getUniformLocation(prog, 'uTime'),
+    staticInt: gl.getUniformLocation(prog, 'uStaticInt'),
+    flicker: gl.getUniformLocation(prog, 'uFlicker')
+};
+
+function createBuf(verts, indices) {
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+    const ibo = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+    return { vbo, ibo, cnt: indices.length };
+}
+
+function quad(v0, v1, v2, v3, norm, col) {
+    const verts = [...v0, ...norm, ...col, ...v1, ...norm, ...col, ...v2, ...norm, ...col, ...v3, ...norm, ...col];
+    return { verts, inds: [0, 1, 2, 0, 2, 3] };
+}
+
+function box(x, y, z, w, h, d, col) {
+    const v = [];
+    const i = [];
+    let offset = 0;
+
+    [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].forEach((n, idx) => {
+        let q;
+        if (idx === 0) q = quad([x + w, y, z], [x + w, y + h, z], [x + w, y + h, z + d], [x + w, y, z + d], n, col);
+        else if (idx === 1) q = quad([x, y, z + d], [x, y + h, z + d], [x, y + h, z], [x, y, z], n, col);
+        else if (idx === 2) q = quad([x, y + h, z], [x, y + h, z + d], [x + w, y + h, z + d], [x + w, y + h, z], n, col);
+        else if (idx === 3) q = quad([x, y, z + d], [x, y, z], [x + w, y, z], [x + w, y, z + d], n, col);
+        else if (idx === 4) q = quad([x + w, y, z + d], [x + w, y + h, z + d], [x, y + h, z + d], [x, y, z + d], n, col);
+        else q = quad([x, y, z], [x, y + h, z], [x + w, y + h, z], [x + w, y, z], n, col);
+        v.push(...q.verts);
+        i.push(...q.inds.map(idx => idx + offset));
+        offset += 4;
+    });
+    return { verts: v, inds: i };
+}
+
+function makeTerm() {
+    const v = [], i = [];
+    let off = 0;
+    const body = box(-0.3, 0, -0.05, 0.6, 0.8, 0.1, [0.1, 0.1, 0.12]);
+    v.push(...body.verts); i.push(...body.inds.map(x => x + off)); off += 16;
+    const screen = box(-0.25, 0.1, 0.06, 0.5, 0.5, 0.02, [0.05, 0.15, 0.05]);
+    v.push(...screen.verts); i.push(...screen.inds.map(x => x + off)); off += 24;
+    return createBuf(v, i);
+}
+
+function makeExit() {
+    const v = [], i = [];
+    let off = 0;
+    for (let j = 0; j < 4; j++) {
+        const a = j * Math.PI / 2, r = 1.2;
+        const x = Math.cos(a) * r, z = Math.sin(a) * r;
+        const pillar = box(x - 0.15, 0, z - 0.15, 0.3, 5, 0.3, [0.7, 0.2, 0.2]);
+        v.push(...pillar.verts); i.push(...pillar.inds.map(x => x + off)); off += 24;
+    }
+    return createBuf(v, i);
+}
+
+function makePlayer() {
+    const v = [], i = [];
+    let off = 0;
+    
+    // Body (cylinder approximation using box)
+    const body = box(-0.3, 0, -0.3, 0.6, 1.2, 0.6, [1, 1, 1]);
+    v.push(...body.verts); i.push(...body.inds.map(x => x + off)); off += 24;
+    
+    // Head
+    const head = box(-0.25, 1.2, -0.25, 0.5, 0.5, 0.5, [1, 1, 1]);
+    v.push(...head.verts); i.push(...head.inds.map(x => x + off)); off += 24;
+    
+    return createBuf(v, i);
+}
+
+function initState() {
+    state = {
+        level: 0, map: [], mapSize: 0, pos: [5.5, 1.7, 5.5], yaw: 0, pitch: 0,
+        keys: {}, gameStarted: false, dead: false, win: false, light: 0,
+        entities: [], terms: [], codes: [], exitPos: null, particles: [],
+        buffers: {}, staticIntensity: 0, lightFlicker: 1.0, lastHeart: 0,
+        lastStep: 0, startTime: 0, unlockedLevel: 0
+    };
+
+    state.buffers.term = makeTerm();
+    state.buffers.exit = makeExit();
+    state.buffers.entEye = createBuf(
+        [-0.08, 0, 0, 0, 0, 1, 1, 0, 0, 0.08, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0.1, 0, 0, 0, 1, 1, 0, 0],
+        [0, 1, 2]
+    );
+    state.buffers.particle = createBuf(
+        [-0.02, 0, 0, 0, 1, 0, 1, 1, 1, 0.02, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0.05, 0, 0, 1, 0, 1, 1, 1],
+        [0, 1, 2]
+    );
+    
+    // Player model buffer
+    state.buffers.player = makePlayer();
+    
+    state.buffers.stalkerBody = createBuf(
+        [-0.3, 0, -0.3, 0, 1, 0, 0.3, 0.05, 0.05, 0.3, 0, -0.3, 0, 1, 0, 0.3, 0.05, 0.05, 0.3, 1.5, -0.3, 0, 1, 0, 0.3, 0.05, 0.05, -0.3, 1.5, -0.3, 0, 1, 0, 0.3, 0.05, 0.05,
+        -0.3, 0, 0.3, 0, 1, 0, 0.3, 0.05, 0.05, 0.3, 0, 0.3, 0, 1, 0, 0.3, 0.05, 0.05, 0.3, 1.5, 0.3, 0, 1, 0, 0.3, 0.05, 0.05, -0.3, 1.5, 0.3, 0, 1, 0, 0.3, 0.05, 0.05],
+        [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6]
+    );
+    state.buffers.blinkerBody = createBuf(
+        [-0.4, 0, -0.4, 0, 1, 0, 0.1, 0.3, 0.5, 0.4, 0, -0.4, 0, 1, 0, 0.1, 0.3, 0.5, 0.4, 0.6, -0.4, 0, 1, 0, 0.1, 0.3, 0.5, -0.4, 0.6, -0.4, 0, 1, 0, 0.1, 0.3, 0.5,
+        -0.4, 0, 0.4, 0, 1, 0, 0.1, 0.3, 0.5, 0.4, 0, 0.4, 0, 1, 0, 0.1, 0.3, 0.5, 0.4, 0.6, 0.4, 0, 1, 0, 0.1, 0.3, 0.5, -0.4, 0.6, 0.4, 0, 1, 0, 0.1, 0.3, 0.5],
+        [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6]
+    );
+    state.buffers.observerBody = createBuf(
+        [-0.5, 0, -0.5, 0, 1, 0, 0.5, 0.1, 0.1, 0.5, 0, -0.5, 0, 1, 0, 0.5, 0.1, 0.1, 0.5, 2.5, -0.5, 0, 1, 0, 0.5, 0.1, 0.1, -0.5, 2.5, -0.5, 0, 1, 0, 0.5, 0.1, 0.1,
+        -0.5, 0, 0.5, 0, 1, 0, 0.5, 0.1, 0.1, 0.5, 0, 0.5, 0, 1, 0, 0.5, 0.1, 0.1, 0.5, 2.5, 0.5, 0, 1, 0, 0.5, 0.1, 0.1, -0.5, 2.5, 0.5, 0, 1, 0, 0.5, 0.1, 0.1],
+        [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6]
+    );
+}
+
+function rnd(seed) {
+    const x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+}
+
+function genMap(sz, seed) {
+    const m = [];
+    for (let i = 0; i < sz; i++) {
+        m[i] = [];
+        for (let j = 0; j < sz; j++) m[i][j] = (i === 0 || j === 0 || i === sz - 1 || j === sz - 1) ? 1 : (rnd(seed + i * sz + j) < 0.35 ? 1 : 0);
+    }
+    m[1][1] = m[1][2] = m[2][1] = 0;
+    return m;
+}
+
+function findOpenSpot(m, seed) {
+    for (let tries = 0; tries < 100; tries++) {
+        const x = Math.floor(rnd(seed + tries * 137) * (m.length - 2)) + 1;
+        const z = Math.floor(rnd(seed + tries * 239) * (m.length - 2)) + 1;
+        if (!m[x][z] && !m[x - 1][z] && !m[x + 1][z] && !m[x][z - 1] && !m[x][z + 1]) return [x * CELL + 3.5, z * CELL + 3.5];
+    }
+    return [5.5, 5.5];
+}
+
+function buildWorld() {
+    const lvl = LEVEL_DATA[state.level];
+    const v = [], idx = [];
+    let off = 0;
+
+    for (let x = 0; x < state.mapSize; x++) {
+        for (let z = 0; z < state.mapSize; z++) {
+            const floor = quad([x * CELL, 0, z * CELL], [x * CELL, 0, (z + 1) * CELL], [(x + 1) * CELL, 0, (z + 1) * CELL], [(x + 1) * CELL, 0, z * CELL], [0, 1, 0], lvl.floor);
+            v.push(...floor.verts); idx.push(...floor.inds.map(i => i + off)); off += 4;
+            const ceil = quad([(x + 1) * CELL, 6, z * CELL], [(x + 1) * CELL, 6, (z + 1) * CELL], [x * CELL, 6, (z + 1) * CELL], [x * CELL, 6, z * CELL], [0, -1, 0], lvl.ceil);
+            v.push(...ceil.verts); idx.push(...ceil.inds.map(i => i + off)); off += 4;
+
+            if (state.map[x][z]) {
+                for (let dir of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+                    const nx = x + dir[0], nz = z + dir[2];
+                    if (nx >= 0 && nx < state.mapSize && nz >= 0 && nz < state.mapSize && !state.map[nx][nz]) {
+                        let wall;
+                        if (dir[0] === 1) wall = quad([(x + 1) * CELL, 0, z * CELL], [(x + 1) * CELL, 6, z * CELL], [(x + 1) * CELL, 6, (z + 1) * CELL], [(x + 1) * CELL, 0, (z + 1) * CELL], dir, lvl.wall);
+                        else if (dir[0] === -1) wall = quad([x * CELL, 0, (z + 1) * CELL], [x * CELL, 6, (z + 1) * CELL], [x * CELL, 6, z * CELL], [x * CELL, 0, z * CELL], dir, lvl.wall);
+                        else if (dir[2] === 1) wall = quad([(x + 1) * CELL, 0, (z + 1) * CELL], [(x + 1) * CELL, 6, (z + 1) * CELL], [x * CELL, 6, (z + 1) * CELL], [x * CELL, 0, (z + 1) * CELL], dir, lvl.wall);
+                        else wall = quad([x * CELL, 0, z * CELL], [x * CELL, 6, z * CELL], [(x + 1) * CELL, 6, z * CELL], [(x + 1) * CELL, 0, z * CELL], dir, lvl.wall);
+                        v.push(...wall.verts); idx.push(...wall.inds.map(i => i + off)); off += 4;
+                    }
+                }
+            }
+        }
+    }
+    state.buffers.world = createBuf(v, idx);
+}
+
+function dist(a, b) { return Math.sqrt((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2); }
+function isWall(p) {
+    const x = Math.floor(p[0] / CELL), z = Math.floor(p[2] / CELL);
+    return x < 0 || z < 0 || x >= state.mapSize || z >= state.mapSize || state.map[x][z];
+}
+function normalize(v) { const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); return [v[0] / len, v[1] / len, v[2] / len]; }
+
+function loadLevel(lvl) {
+    state.level = lvl;
+    state.mapSize = MAP_SIZES[lvl];
+    state.map = genMap(state.mapSize, Math.random() * 1000);
+    state.dead = false;
+    state.win = false;
+    state.entities = [];
+    state.terms = [];
+    state.codes = [];
+    state.particles = [];
+    state.staticIntensity = 0;
+    state.pos = [5.5, 1.7, 5.5];
+
+    const lvlData = LEVEL_DATA[lvl];
+    for (let i = 0; i < lvlData.stalkers; i++) {
+        const p = findOpenSpot(state.map, 1000 + i);
+        state.entities.push({ type: 'stalker', pos: [p[0], 0.9, p[1]], target: null, stopTime: 0 });
+    }
+    for (let i = 0; i < lvlData.blinkers; i++) {
+        const p = findOpenSpot(state.map, 2000 + i);
+        state.entities.push({ type: 'blinker', pos: [p[0], 0.3, p[1]], lastBlink: 0 });
+    }
+    for (let i = 0; i < lvlData.observers; i++) {
+        const p = findOpenSpot(state.map, 3000 + i);
+        state.entities.push({ type: 'observer', pos: [p[0], 1.0, p[1]] });
+    }
+
+    for (let i = 0; i < 3; i++) {
+        const p = findOpenSpot(state.map, 4000 + i);
+        state.terms.push({ pos: [p[0], 0, p[1]], code: i, done: false });
+    }
+
+    const ep = findOpenSpot(state.map, 5000);
+    state.exitPos = [ep[0], 3.0, ep[1]];
+
+    for (let i = 0; i < 50; i++) {
+        const p = findOpenSpot(state.map, 6000 + i);
+        state.particles.push({ pos: [p[0], Math.random() * 5 + 0.5, p[1]], vel: [(Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01] });
+    }
+
+    buildWorld();
+
+    const notif = document.getElementById('level-notifier');
+    document.getElementById('lvl-title').textContent = lvlData.name;
+    document.getElementById('level-desc').textContent = lvlData.desc;
+    notif.style.opacity = '1';
+    setTimeout(() => { notif.style.opacity = '0'; }, 4000);
+}
+
+function handleFirstClick() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+}
+
+function playSfx(freq, type, dur, vol, freqEnd) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    if (freqEnd) osc.frequency.exponentialRampToValueAtTime(freqEnd, audioCtx.currentTime + dur);
+    gain.gain.setValueAtTime(vol || 0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + (dur || 0.3));
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + (dur || 0.3));
+}
+
+function playUiHover() { playSfx(600, 'square', 0.05, 0.05); }
+function playUiClick() { playSfx(800, 'square', 0.1, 0.1, 400); }
+function playStep() { playSfx(80 + Math.random() * 40, 'sawtooth', 0.05, 0.08); }
+function playHeart() { playSfx(60, 'sine', 0.1, 0.15 + state.staticIntensity * 0.3); }
+
+let staticNode, heartNode;
+function updateAudio() {
+    if (!audioCtx) return;
+    if (!state.gameStarted) {
+        if (staticNode) { staticNode.stop(); staticNode = null; }
+        if (heartNode) { heartNode.stop(); heartNode = null; }
+        return;
+    }
+    if (!staticNode) {
+        staticNode = audioCtx.createOscillator();
+        const staticGain = audioCtx.createGain();
+        staticNode.type = 'sawtooth';
+        staticNode.frequency.setValueAtTime(100, audioCtx.currentTime);
+        staticGain.gain.setValueAtTime(0, audioCtx.currentTime);
+        staticNode.connect(staticGain);
+        staticGain.connect(audioCtx.destination);
+        staticNode.start();
+        staticNode.gainNode = staticGain;
+    }
+    if (staticNode && staticNode.gainNode) {
+        staticNode.gainNode.gain.setValueAtTime(state.staticIntensity * 0.15, audioCtx.currentTime);
+    }
+}
+
+function updateEnt(ent, dt) {
+    const dP = dist(state.pos, ent.pos);
+    if (ent.type === 'stalker') {
+        const canSee = state.light && dP < 15;
+        if (canSee) {
+            ent.stopTime = Date.now() / 1000 + 2.0;
+            ent.target = null;
+        } else if (!ent.target || Date.now() / 1000 > ent.stopTime) {
+            ent.target = [...state.pos];
+        }
+        if (ent.target) {
+            const dx = ent.target[0] - ent.pos[0], dz = ent.target[2] - ent.pos[2];
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 0.5) {
+                const speed = 2.5 * dt;
+                const nx = ent.pos[0] + (dx / dist) * speed, nz = ent.pos[2] + (dz / dist) * speed;
+                if (!isWall([nx, 0.9, ent.pos[2]])) ent.pos[0] = nx;
+                if (!isWall([ent.pos[0], 0.9, nz])) ent.pos[2] = nz;
+            }
+        }
+    } else if (ent.type === 'blinker') {
+        const now = Date.now() / 1000;
+        if (now - ent.lastBlink > 3.0) {
+            ent.lastBlink = now;
+            const dx = state.pos[0] - ent.pos[0], dz = state.pos[2] - ent.pos[2];
+            const d = Math.sqrt(dx * dx + dz * dz);
+            if (d > 1.0) {
+                ent.pos[0] += (dx / d) * Math.min(d - 1.0, 5.0);
+                ent.pos[2] += (dz / d) * Math.min(d - 1.0, 5.0);
+            }
+        }
+    } else {
+        const dx = state.pos[0] - ent.pos[0], dz = state.pos[2] - ent.pos[2];
+        const d = Math.sqrt(dx * dx + dz * dz);
+        if (d > 0) {
+            const speed = 3.5 * dt;
+            const nx = ent.pos[0] + (dx / d) * speed, nz = ent.pos[2] + (dz / d) * speed;
+            if (!isWall([nx, 0.9, ent.pos[2]])) ent.pos[0] = nx;
+            if (!isWall([ent.pos[0], 0.9, nz])) ent.pos[2] = nz;
+        }
+    }
+    return dP;
+}
+
+// Update interval for multiplayer
+let lastMpUpdate = 0;
+
+function update(t) {
+    if (state.dead || state.win) {
+        if (state.dead && document.getElementById('message').style.display !== 'flex') {
+            document.getElementById('message').style.display = 'flex';
+            document.getElementById('message').innerHTML = '<h1 class="glitch-text">CONNECTION TERMINATED</h1>';
+            playSfx(20, 'sawtooth', 2.0, 0.6, 5);
+            
+            // Notify server
+            if (mp.socket && mp.connected) {
+                mp.socket.emit('playerDied');
+            }
+            
+            setTimeout(() => {
+                leaveRoom();
+                showMenu();
+            }, 4000);
+        }
+        return;
+    }
+    
+    const dt = 0.016;
+    const speed = (state.keys['shift'] ? 8.0 : 4.0) * dt;
+    state.lightFlicker = 0.97 + Math.random() * 0.06;
+    if (Math.random() > 0.995) state.lightFlicker = 0.1;
+
+    const dir = [Math.sin(state.yaw), 0, Math.cos(state.yaw)], side = [Math.cos(state.yaw), 0, -Math.sin(state.yaw)];
+    let mv = [0, 0, 0];
+    if (state.keys['w']) { mv[0] += dir[0]; mv[2] += dir[2]; }
+    if (state.keys['s']) { mv[0] -= dir[0]; mv[2] -= dir[2]; }
+    if (state.keys['a']) { mv[0] += side[0]; mv[2] += side[2]; }
+    if (state.keys['d']) { mv[0] -= side[0]; mv[2] -= side[2]; }
+
+    if (mv[0] || mv[2]) {
+        if (!isWall([state.pos[0] + mv[0] * speed, 1.7, state.pos[2]])) state.pos[0] += mv[0] * speed;
+        if (!isWall([state.pos[0], 1.7, state.pos[2] + mv[2] * speed])) state.pos[2] += mv[2] * speed;
+        if (t - state.lastStep > (state.keys['shift'] ? 0.18 : 0.35)) {
+            playStep();
+            state.lastStep = t;
+        }
+    }
+
+    // Send player updates to server (throttled)
+    if (t - lastMpUpdate > 0.05) {
+        sendPlayerUpdate();
+        lastMpUpdate = t;
+    }
+
+    let minD = 999;
+    state.entities.forEach(e => {
+        const d = updateEnt(e, dt);
+        if (e.type !== 'observer' && d < minD) minD = d;
+        if (e.type !== 'observer' && d < 1.3) state.dead = true;
+    });
+
+    const distanceStatic = Math.max(0, 1.0 - (minD / 14.0));
+
+    if (distanceStatic > state.staticIntensity) {
+        state.staticIntensity = distanceStatic;
+    } else {
+        state.staticIntensity = Math.max(0, state.staticIntensity - dt * 0.5);
+    }
+
+    updateAudio();
+    if (t - state.lastHeart > 0.15 + minD * 0.08) {
+        playHeart();
+        state.lastHeart = t;
+    }
+
+    state.particles.forEach(p => {
+        p.pos[0] += p.vel[0];
+        p.pos[1] += p.vel[1];
+        p.pos[2] += p.vel[2];
+        if (p.pos[1] < 0 || p.pos[1] > 6) p.vel[1] *= -1;
+    });
+
+    let near = false;
+    state.terms.forEach(tm => { if (!tm.done && dist(state.pos, tm.pos) < 3.5) near = true; });
+    if (state.codes.length === 3 && dist(state.pos, state.exitPos) < 4.5) near = true;
+    document.getElementById('interaction-prompt').style.display = near ? 'block' : 'none';
+
+    const el = Math.floor(t - state.startTime);
+    const playerCount = mp.otherPlayers.size + 1;
+    document.getElementById('ui').innerHTML = `[REC] 00:${Math.floor(el / 60).toString().padStart(2, '0')}:${(el % 60).toString().padStart(2, '0')}<br>LOC: ARCHIVE.<span id="lvl-name">${state.level}</span><br><div id="stats" style="margin-top:20px; color:rgba(255,255,255,0.5);">STATUS: ${state.staticIntensity > 0.6 ? 'SIGNAL CRITICAL' : 'SIGNAL NOMINAL'}<br>NODES: ${state.codes.length}/3<br>PLAYERS: ${playerCount}</div>`;
+}
+
+function render(t) {
+    if (!state.gameStarted) return;
+    update(t / 1000);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+
+    const aspect = canvas.width / canvas.height;
+    const proj = [1.1 / aspect, 0, 0, 0, 0, 1.1, 0, 0, 0, 0, -1.002, -1, 0, 0, -0.2, 0];
+    const look = [Math.sin(state.yaw) * Math.cos(state.pitch), Math.sin(state.pitch), Math.cos(state.yaw) * Math.cos(state.pitch)];
+    const z = normalize([-look[0], -look[1], -look[2]]), x = normalize([z[2], 0, -z[0]]), y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
+    const view = [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -(x[0] * state.pos[0] + x[1] * state.pos[1] + x[2] * state.pos[2]), -(y[0] * state.pos[0] + y[1] * state.pos[1] + y[2] * state.pos[2]), -(z[0] * state.pos[0] + z[1] * state.pos[1] + z[2] * state.pos[2]), 1];
+
+    gl.uniformMatrix4fv(locs.proj, false, proj);
+    gl.uniformMatrix4fv(locs.view, false, view);
+    gl.uniform3fv(locs.camPos, state.pos);
+    gl.uniform3fv(locs.camDir, look);
+    gl.uniform1f(locs.lightOn, state.light);
+    gl.uniform1f(locs.uTime, t / 1000);
+    gl.uniform1f(locs.staticInt, state.staticIntensity);
+    gl.uniform1f(locs.flicker, state.lightFlicker);
+
+    draw(state.buffers.world, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    state.terms.forEach(tm => { if (!tm.done) draw(state.buffers.term, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, tm.pos[0], tm.pos[1], tm.pos[2], 1]); });
+    if (state.codes.length === 3) draw(state.buffers.exit, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, state.exitPos[0], state.exitPos[1] - 3.0, state.exitPos[2], 1]);
+
+    state.particles.forEach(p => draw(state.buffers.particle, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, p.pos[0], p.pos[1], p.pos[2], 1]));
+
+    state.entities.forEach(ent => {
+        const bob = Math.sin(t / 250) * 0.1;
+        const m = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ent.pos[0], ent.pos[1] + bob, ent.pos[2], 1];
+        if (ent.type === 'stalker') {
+            draw(state.buffers.stalkerBody, m);
+            const el = [...m], er = [...m];
+            el[12] += 0.1; el[13] += 1.0; el[14] += 0.12;
+            er[12] -= 0.1; er[13] += 1.0; er[14] += 0.12;
+            draw(state.buffers.entEye, el);
+            draw(state.buffers.entEye, er);
+        } else if (ent.type === 'blinker') {
+            const rot = t / 200;
+            const rm = [Math.cos(rot), 0, Math.sin(rot), 0, 0, 1, 0, 0, -Math.sin(rot), 0, Math.cos(rot), 0, 0, 0, 0, 1];
+            draw(state.buffers.blinkerBody, m);
+            const eye = [...m];
+            eye[13] += 0.1; eye[14] += 0.3;
+            draw(state.buffers.entEye, eye);
+        } else {
+            draw(state.buffers.observerBody, m);
+            const eye = [...m];
+            eye[13] += 1.8; eye[14] += 0.3;
+            draw(state.buffers.entEye, eye);
+        }
+    });
+
+    // Draw other players
+    mp.otherPlayers.forEach(player => {
+        if (player.position) {
+            const m = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, player.position[0], player.position[1] - 1.7, player.position[2], 1];
+            
+            // Override color for player model
+            const originalColor = locs.color;
+            gl.uniform3fv(locs.color, player.color);
+            
+            draw(state.buffers.player, m);
+            
+            // Restore original color handling
+            gl.uniform3fv(locs.color, originalColor);
+        }
+    });
+
+    requestAnimationFrame(render);
+}
+
+function draw(buf, m) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.vbo);
+    gl.vertexAttribPointer(locs.pos, 3, gl.FLOAT, false, 36, 0);
+    gl.enableVertexAttribArray(locs.pos);
+    gl.vertexAttribPointer(locs.norm, 3, gl.FLOAT, false, 36, 12);
+    gl.enableVertexAttribArray(locs.norm);
+    gl.vertexAttribPointer(locs.color, 3, gl.FLOAT, false, 36, 24);
+    gl.enableVertexAttribArray(locs.color);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.ibo);
+    gl.uniformMatrix4fv(locs.model, false, m);
+    gl.drawElements(gl.TRIANGLES, buf.cnt, gl.UNSIGNED_SHORT, 0);
+}
+
+window.addEventListener('keydown', e => {
+    if (!state.gameStarted) return;
+    
+    // Chat toggle
+    if (e.key === 't' || e.key === 'T') {
+        if (!mp.chatOpen) {
+            toggleChat();
+            e.preventDefault();
+            return;
+        }
+    }
+    
+    // Send chat message
+    if (e.key === 'Enter' && mp.chatOpen) {
+        sendChatMessage();
+        e.preventDefault();
+        return;
+    }
+    
+    // Escape chat
+    if (e.key === 'Escape' && mp.chatOpen) {
+        toggleChat();
+        e.preventDefault();
+        return;
+    }
+    
+    // Don't process game controls if chat is open
+    if (mp.chatOpen) return;
+    
+    state.keys[e.key.toLowerCase()] = true;
+    if (e.key === ' ') {
+        state.light = state.light ? 0 : 1;
+        playSfx(state.light ? 300 : 150, 'sine', 0.05, 0.01);
+    }
+    if (e.key === 'e') {
+        state.terms.forEach((tm, idx) => {
+            if (!tm.done && dist(state.pos, tm.pos) < 3.5) {
+                tm.done = true;
+                if (mp.socket && mp.connected) {
+                    mp.socket.emit('terminalActivated', idx);
+                } else {
+                    state.codes.push(tm.code);
+                    playSfx(1100, 'sine', 0.5, 0.1, 1400);
+                }
+            }
+        });
+        if (state.codes.length === 3 && dist(state.pos, state.exitPos) < 4.5) {
+            if (mp.socket && mp.connected) {
+                mp.socket.emit('exitActivated');
+            } else {
+                // Single player fallback
+                if (state.level < 2) {
+                    state.unlockedLevel = Math.max(state.unlockedLevel, state.level + 1);
+                    playSfx(1300, 'sawtooth', 0.7, 0.1, 700);
+                    loadLevel(state.level + 1);
+                } else {
+                    state.win = true;
+                    document.getElementById('message').style.display = 'flex';
+                    document.getElementById('message').style.color = '#0f0';
+                    document.getElementById('message').innerHTML = '<h1 class="glitch-text">PURGE SUCCESSFUL</h1>';
+                    playSfx(600, 'square', 1.2, 0.1, 80);
+                    setTimeout(showMenu, 5000);
+                }
+            }
+        }
+    }
+});
+
+window.addEventListener('keyup', e => {
+    if (!mp.chatOpen) {
+        state.keys[e.key.toLowerCase()] = false;
+    }
+});
+
+window.addEventListener('mousemove', e => {
+    if (document.pointerLockElement === canvas && state.gameStarted && !mp.chatOpen) {
+        state.yaw -= e.movementX * 0.0018;
+        state.pitch = Math.max(-1.4, Math.min(1.4, state.pitch - e.movementY * 0.0018));
+    }
+});
+
+function showMenu() {
+    state.gameStarted = false;
+    document.exitPointerLock();
+    document.getElementById('menu').style.display = 'flex';
+    document.getElementById('message').style.display = 'none';
+    document.getElementById('chat-messages').style.display = 'none';
+    document.getElementById('chat-input-container').style.display = 'none';
+    updateAudio();
+}
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+});
+
+// Initialize
+window.dispatchEvent(new Event('resize'));
+initState();
+initSocket();
+</script>
+</body>
+</html>
